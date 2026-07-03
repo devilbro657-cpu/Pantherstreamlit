@@ -5,20 +5,12 @@ from datetime import datetime
 
 # ==================== CONFIGURATION ====================
 API_BASE_URL = "https://games.accbazaar.shop"
-API_KEY = "আপনার-API-KEY-এখানে-লিখুন"  # ⚠️ আপনার আসল API Key দিন
-
-# Hardcoded Apps (Fallback)
-HARDCODED_APPS = [
-    "567slot_game", "mbmbet_game", "yonoslot_game", "okrummy_game", "Yono777_game",
-    "toprummy_game", "Yonogame_game", "spincrush_game", "789jackpot_game", "hirummy_game",
-    "indslot_game", "maha_game", "Yono_vip", "Spin777_game", "Hindi777_game",
-    "Bingo_game", "jaiho777_game", "jaiho91_game", "Rummyludo_game", "Shareslots_game", "SpinLucky_game"
-]
+API_KEY = "YOUR_API_KEY_HERE"  # ⚠️ আপনার আসল API Key দিন
 
 # ==================== API FUNCTIONS ====================
 def make_request(endpoint, method='GET', data=None, params=None):
     url = f"{API_BASE_URL}{endpoint}"
-    headers = {'X-API-Key': API_KEY, 'Content-Type': 'application/json'}
+    headers = {'X-API-Key': API_KEY, 'Content-Type': 'application/json; charset=utf-8'}
     try:
         if method == 'POST':
             r = requests.post(url, headers=headers, json=data, timeout=15)
@@ -40,19 +32,33 @@ def cancel_task(task_id):
 def get_services_list():
     return make_request('/v1/services/list')
 
-def get_registrations(limit=10):
-    return make_request('/v1/account/registrations', params={'limit': limit})
-
 # ==================== SESSION STATE ====================
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'username' not in st.session_state:
     st.session_state.username = ''
 if 'available_apps' not in st.session_state:
-    st.session_state.available_apps = HARDCODED_APPS
+    st.session_state.available_apps = [
+        "567slot_game", "mbmbet_game", "yonoslot_game", "Yono_vip",
+        "789jackpot_game", "toprummy_game", "Yonogame_game",
+        "spincrush_game", "hirummy_game", "indslot_game"
+    ]
+if 'selected_apps' not in st.session_state:
+    st.session_state.selected_apps = set()
 if 'app_tasks' not in st.session_state:
-    # app_tasks = {app_name: {'task_id': ..., 'phone': ..., 'status': 'pending'|'success'|'failed', 'otp_sent_at': ...}}
     st.session_state.app_tasks = {}
+if 'success_counts' not in st.session_state:
+    st.session_state.success_counts = {}
+if 'notifications' not in st.session_state:
+    st.session_state.notifications = []
+if 'phone_number' not in st.session_state:
+    st.session_state.phone_number = ""
+if 'sending_in_progress' not in st.session_state:
+    st.session_state.sending_in_progress = False
+if 'current_sending_app' not in st.session_state:
+    st.session_state.current_sending_app = ""
+if 'sending_progress' not in st.session_state:
+    st.session_state.sending_progress = 0.0
 
 # ==================== AUTHENTICATION ====================
 def login(username, password):
@@ -70,310 +76,584 @@ def logout():
     st.session_state.logged_in = False
     st.session_state.username = ''
     st.session_state.app_tasks = {}
+    st.session_state.selected_apps = set()
+    st.session_state.notifications = []
+
+# ==================== CUSTOM CSS (Video UI Match) ====================
+CUSTOM_CSS = """
+<style>
+/* Hide Streamlit default elements */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+.stApp {background: #0a0e1a !important; color: #ffffff !important;}
+
+/* Login */
+.login-container {
+    background: linear-gradient(135deg, #1a1f3a 0%, #0d1117 100%);
+    padding: 2rem;
+    border-radius: 16px;
+    border: 1px solid #2a3050;
+    max-width: 400px;
+    margin: 3rem auto;
+    text-align: center;
+}
+
+/* Header */
+.panther-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    background: linear-gradient(135deg, #1a1f3a 0%, #0d1117 100%);
+    border-radius: 12px;
+    margin-bottom: 1rem;
+    border: 1px solid #2a3050;
+}
+.panther-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #ffffff;
+}
+.deep-test-btn {
+    background: #1a2a4a;
+    color: #60a5fa;
+    border: 1px solid #2a4a7a;
+    padding: 0.4rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+}
+.exit-btn {
+    background: #3a1a1a;
+    color: #f87171;
+    border: 1px solid #5a2a2a;
+    padding: 0.4rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+}
+
+/* Counter badges */
+.counter-bar {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+.counter-badge {
+    background: #1a1f3a;
+    border: 1px solid #2a3050;
+    padding: 0.4rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    color: #94a3b8;
+}
+.counter-badge span {color: #60a5fa; font-weight: bold;}
+
+/* Card */
+.card {
+    background: linear-gradient(135deg, #1a1f3a 0%, #0d1117 100%);
+    border: 1px solid #2a3050;
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+.card-title {
+    font-size: 1.2rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Label */
+.label-text {
+    font-size: 0.75rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+/* Status banners */
+.status-banner {
+    padding: 0.8rem 1rem;
+    border-radius: 10px;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+.status-banner.success {
+    background: #064e3b;
+    border: 1px solid #059669;
+    color: #6ee7b7;
+}
+.status-banner.error {
+    background: #450a0a;
+    border: 1px solid #dc2626;
+    color: #fca5a5;
+}
+.status-banner.info {
+    background: #1e3a5f;
+    border: 1px solid #3b82f6;
+    color: #93c5fd;
+}
+
+/* Progress */
+.progress-container {
+    background: #1a1f3a;
+    border-radius: 8px;
+    overflow: hidden;
+    height: 8px;
+    margin: 0.5rem 0;
+}
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    transition: width 0.3s;
+    border-radius: 8px;
+}
+
+/* Done/Pending counter */
+.done-pending {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    padding: 0.8rem;
+    background: #1a1f3a;
+    border-radius: 10px;
+    margin-bottom: 1rem;
+    border: 1px solid #2a3050;
+}
+.done-pending .done {color: #6ee7b7; font-weight: bold;}
+.done-pending .pending {color: #fbbf24; font-weight: bold;}
+
+/* App card */
+.app-card {
+    background: #1a1f3a;
+    border: 1px solid #2a3050;
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 0.8rem;
+}
+.app-card.success-card {
+    border-color: #059669;
+    background: #064e3b;
+}
+.app-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.8rem;
+}
+.app-card-name {color: #60a5fa; font-weight: bold; font-size: 0.95rem;}
+.app-card-status {
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+}
+.app-card-status.pending {
+    background: #451a03;
+    color: #fbbf24;
+    border: 1px solid #92400e;
+}
+.app-card-status.done {
+    background: #064e3b;
+    color: #6ee7b7;
+    border: 1px solid #059669;
+}
+.app-card-otp {
+    background: #0d1117;
+    border: 1px solid #2a3050;
+    border-radius: 8px;
+    padding: 0.8rem;
+    text-align: center;
+    font-size: 1.2rem;
+    letter-spacing: 0.3rem;
+    color: #94a3b8;
+    margin-bottom: 0.8rem;
+}
+.app-card-otp.filled {color: #6ee7b7; letter-spacing: 0.2rem;}
+.app-card-buttons {display: flex; gap: 0.5rem;}
+
+/* Notification */
+.notification {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    padding: 0.8rem 1.5rem;
+    border-radius: 10px;
+    font-weight: bold;
+    animation: slideDown 0.3s ease;
+    min-width: 250px;
+    text-align: center;
+}
+.notification.success {
+    background: #064e3b;
+    border: 1px solid #059669;
+    color: #6ee7b7;
+}
+@keyframes slideDown {
+    from { transform: translateX(-50%) translateY(-100%); opacity: 0; }
+    to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+/* Streamlit overrides */
+.stTextInput > div > div > input {
+    background: #0d1117 !important;
+    border: 1px solid #2a3050 !important;
+    color: #ffffff !important;
+    border-radius: 10px !important;
+    padding: 0.8rem 1rem !important;
+}
+.stButton > button {
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+}
+</style>
+"""
 
 # ==================== LOGIN PAGE ====================
 if not st.session_state.logged_in:
-    st.set_page_config(page_title="Login", page_icon="🔐", layout="centered")
+    st.set_page_config(page_title="Panther Panel", page_icon="🐆", layout="centered")
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     
-    col1, col2, col3 = st.columns([1, 2, 1])
+    st.markdown("""
+    <div class="login-container">
+        <div style="font-size: 3rem; margin-bottom: 0.5rem;">🐆</div>
+        <h1 style="margin: 0; color: #ffffff; font-size: 2rem;">PANTHER</h1>
+        <p style="color: #64748b; margin: 0.5rem 0 1.5rem 0;">Panel Login</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        username = st.text_input("Username", placeholder="Enter username", key="login_user")
     with col2:
-        st.title("🔐 Panther Tool")
-        st.markdown("---")
-        
-        username = st.text_input("Username", placeholder="Enter username")
-        password = st.text_input("Password", type="password", placeholder="Enter password")
-        
-        col_a, col_b = st.columns(2)
-        with col_a:
-            if st.button("Login", type="primary", use_container_width=True):
-                if login(username, password):
-                    st.success("✅ Login successful!")
-                    st.rerun()
-                else:
-                    st.error("❌ Invalid credentials")
-        with col_b:
-            if st.button("Clear", use_container_width=True):
+        password = st.text_input("Password", type="password", placeholder="Enter password", key="login_pass")
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("Login", type="primary", use_container_width=True):
+            if login(username, password):
+                st.success("Login successful!")
                 st.rerun()
+            else:
+                st.error("Invalid credentials")
+    with col_b:
+        if st.button("Clear", use_container_width=True):
+            st.rerun()
 
 else:
     # ==================== MAIN APP ====================
-    st.set_page_config(page_title="Panther Tool", page_icon="🐆", layout="wide")
+    st.set_page_config(page_title="Panther Panel", page_icon="🐆", layout="wide")
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     
-    # Custom CSS
+    # Show notifications (top banners like in video)
+    for notif in st.session_state.notifications[-3:]:
+        st.markdown(f'<div class="notification success">{notif}</div>', unsafe_allow_html=True)
+    
+    # ===== HEADER =====
     st.markdown("""
-    <style>
-    .app-card {
-        padding: 1.2rem;
-        border-radius: 0.8rem;
-        background-color: #1e293b;
-        border: 1px solid #334155;
-        margin-bottom: 1rem;
-    }
-    .app-card-success {
-        padding: 1.2rem;
-        border-radius: 0.8rem;
-        background-color: #064e3b;
-        border: 1px solid #059669;
-        margin-bottom: 1rem;
-    }
-    .app-card-failed {
-        padding: 1.2rem;
-        border-radius: 0.8rem;
-        background-color: #450a0a;
-        border: 1px solid #dc2626;
-        margin-bottom: 1rem;
-    }
-    .stButton>button {
-        border-radius: 0.5rem;
-    }
-    </style>
+    <div class="panther-header">
+        <div class="panther-logo">
+            <span>🐆</span>
+            <span>PANTHER</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            <span class="deep-test-btn">👤 DEEP TEST</span>
+            <span class="exit-btn">Exit</span>
+        </div>
+    </div>
     """, unsafe_allow_html=True)
     
-    # Sidebar
-    with st.sidebar:
-        st.title(f"👤 {st.session_state.username}")
-        st.markdown("---")
-        
-        page = st.radio("Menu", ["📝 Registration Tool", "📜 History"], label_visibility="collapsed")
-        
-        st.markdown("---")
-        if st.button("Logout", use_container_width=True):
-            logout()
+    # ===== COUNTER BADGES =====
+    counter_html = '<div class="counter-bar">'
+    for app, count in st.session_state.success_counts.items():
+        counter_html += f'<div class="counter-badge">{app}: <span>{count}</span></div>'
+    if not st.session_state.success_counts:
+        for app in ['567slot', 'Yono', 'mbmbet', 'yonoslot']:
+            counter_html += f'<div class="counter-badge">{app}: <span>0</span></div>'
+    counter_html += '</div>'
+    st.markdown(counter_html, unsafe_allow_html=True)
+    
+    # ===== SEND OTP SECTION =====
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">🚀 Send OTP</div>', unsafe_allow_html=True)
+    
+    # App selection label
+    st.markdown('<div class="label-text">SELECT APPS</div>', unsafe_allow_html=True)
+    
+    # App toggle buttons
+    apps = st.session_state.available_apps
+    cols_per_row = 2
+    num_rows = (len(apps) + cols_per_row - 1) // cols_per_row
+    
+    for row in range(num_rows):
+        cols = st.columns(cols_per_row)
+        for col_idx in range(cols_per_row):
+            app_idx = row * cols_per_row + col_idx
+            if app_idx < len(apps):
+                app = apps[app_idx]
+                is_selected = app in st.session_state.selected_apps
+                with cols[col_idx]:
+                    btn_type = "primary" if is_selected else "secondary"
+                    if st.button(app, key=f"app_toggle_{app}", use_container_width=True, type=btn_type):
+                        if app in st.session_state.selected_apps:
+                            st.session_state.selected_apps.remove(app)
+                        else:
+                            st.session_state.selected_apps.add(app)
+                        st.rerun()
+    
+    # Phone number
+    st.markdown('<div class="label-text" style="margin-top: 1rem;">PHONE NUMBER</div>', unsafe_allow_html=True)
+    phone = st.text_input(
+        "Phone Number",
+        value=st.session_state.phone_number,
+        placeholder="10-digit mobile number",
+        label_visibility="collapsed",
+        key="phone_input"
+    )
+    st.session_state.phone_number = phone
+    
+    # Send button
+    send_clicked = st.button("🚀 SEND ALL OTPs", type="primary", use_container_width=True, key="send_all_btn")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # ===== HANDLE SEND OTP =====
+    if send_clicked:
+        if not st.session_state.selected_apps:
+            st.error("Please select at least one app")
+        elif not phone or len(phone) != 10 or not phone.isdigit():
+            st.error("Please enter a valid 10-digit phone number")
+        else:
+            st.session_state.app_tasks = {}
+            st.session_state.sending_in_progress = True
+            st.session_state.notifications = []
+            
+            total = len(st.session_state.selected_apps)
+            
+            for i, app in enumerate(list(st.session_state.selected_apps)):
+                st.session_state.current_sending_app = app
+                st.session_state.sending_progress = (i + 1) / total
+                
+                res = send_otp(app, phone)
+                
+                if res.get('status') == 'success':
+                    st.session_state.app_tasks[app] = {
+                        'task_id': res.get('task_id'),
+                        'phone': phone,
+                        'status': 'pending',
+                        'otp': '',
+                        'message': ''
+                    }
+                    st.session_state.notifications.append(f"✅ {app} sent!")
+                else:
+                    st.session_state.app_tasks[app] = {
+                        'task_id': None,
+                        'phone': phone,
+                        'status': 'failed',
+                        'otp': '',
+                        'message': res.get('message', 'Failed')
+                    }
+                    st.session_state.notifications.append(f"❌ {app}: {res.get('message', 'Failed')}")
+                
+                # 2.5 second gap between OTPs
+                if i < total - 1:
+                    time.sleep(2.5)
+            
+            st.session_state.sending_in_progress = False
+            st.session_state.current_sending_app = ""
             st.rerun()
     
-    # ==================== REGISTRATION TOOL ====================
-    if page == "📝 Registration Tool":
-        st.title("📝 Registration Tool")
-        st.markdown("---")
-        
-        # ===== STEP 1: Select Apps =====
-        st.subheader("১. অ্যাপ সিলেক্ট করুন")
-        
-        if st.button("🔄 Refresh Apps"):
-            res = get_services_list()
-            if res.get('status') == 'success':
-                st.session_state.available_apps = [s['app_name'] for s in res.get('services', [])]
-                st.success(f"✅ {len(st.session_state.available_apps)} apps loaded!")
-                st.rerun()
-        
-        selected_apps = st.multiselect(
-            "অ্যাপ সিলেক্ট করুন (একাধিক)",
-            st.session_state.available_apps,
-            help="একাধিক অ্যাপ সিলেক্ট করতে পারেন"
-        )
-        
-        if selected_apps:
-            st.info(f"✅ {len(selected_apps)} app(s) selected")
-        
-        st.markdown("---")
-        
-        # ===== STEP 2: Phone Number =====
-        st.subheader("২. ফোন নাম্বার দিন")
-        
-        phone = st.text_input(
-            "📱 ফোন নাম্বার",
-            placeholder="9876543210",
-            key="main_phone"
-        )
-        
-        st.markdown("---")
-        
-        # ===== STEP 3: Send OTP to All Apps =====
-        st.subheader(". সব অ্যাপে OTP পাঠান")
-        
-        if st.button("📤 সব অ্যাপে OTP পাঠান", type="primary", use_container_width=True):
-            if not selected_apps:
-                st.error("❌ অন্তত একটি অ্যাপ সিলেক্ট করুন")
-            elif not phone or len(phone) < 10:
-                st.error("❌ সঠিক ফোন নাম্বার দিন")
-            else:
-                # Reset app_tasks for selected apps
-                st.session_state.app_tasks = {}
-                
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                total = len(selected_apps)
-                
-                for i, app in enumerate(selected_apps):
-                    status_text.info(f"⏳ {app} - OTP পাঠানো হচ্ছে...")
-                    
-                    res = send_otp(app, phone)
-                    
-                    if res.get('status') == 'success':
-                        st.session_state.app_tasks[app] = {
-                            'task_id': res.get('task_id'),
-                            'phone': phone,
-                            'status': 'pending',
-                            'otp_sent_at': datetime.now().isoformat(),
-                            'message': ''
-                        }
-                        status_text.success(f"✅ {app} - OTP পাঠানো হয়েছে!")
-                    else:
-                        st.session_state.app_tasks[app] = {
-                            'task_id': None,
-                            'phone': phone,
-                            'status': 'failed',
-                            'otp_sent_at': None,
-                            'message': res.get('message', 'Failed')
-                        }
-                        status_text.error(f"❌ {app} - {res.get('message', 'Failed')}")
-                    
-                    progress_bar.progress((i + 1) / total)
-                    
-                    # 2.5 second gap between each OTP send
-                    if i < total - 1:
-                        time.sleep(2.5)
-                
-                status_text.empty()
-                st.balloons()
-                st.rerun()
-        
-        # ===== STEP 4: Show OTP Cards for Each App =====
-        if st.session_state.app_tasks:
-            st.markdown("---")
-            st.subheader("৪. OTP Verify করুন")
-            
-            # Count statuses
-            pending_count = sum(1 for t in st.session_state.app_tasks.values() if t['status'] == 'pending')
-            success_count = sum(1 for t in st.session_state.app_tasks.values() if t['status'] == 'success')
-            failed_count = sum(1 for t in st.session_state.app_tasks.values() if t['status'] == 'failed')
-            
-            col1, col2, col3 = st.columns(3)
-            col1.metric(" Pending", pending_count)
-            col2.metric("✅ Success", success_count)
-            col3.metric("❌ Failed", failed_count)
-            
-            st.markdown("---")
-            
-            # Show each app card
-            for app, task_info in list(st.session_state.app_tasks.items()):
-                phone_num = task_info['phone']
-                task_id = task_info['task_id']
-                status = task_info['status']
-                
-                if status == 'success':
-                    # Success card
-                    st.markdown(f"""
-                    <div class="app-card-success">
-                        <h3>✅ {app} - DONE</h3>
-                        <p>📱 Phone: {phone_num}</p>
-                        <p> Password: {task_info.get('password', 'N/A')}</p>
-                        <p>💰 Balance: Rs. {task_info.get('balance', 'N/A')}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                elif status == 'failed':
-                    # Failed card
-                    st.markdown(f"""
-                    <div class="app-card-failed">
-                        <h3>❌ {app} - FAILED</h3>
-                        <p>📱 Phone: {phone_num}</p>
-                        <p>⚠️ {task_info.get('message', 'Unknown error')}</p>
-                        <p> 5 মিনিট অপেক্ষা করুন নতুন OTP এর জন্য</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                else:
-                    # Pending card - needs OTP verification
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="app-card">
-                            <h3> {app}</h3>
-                            <p>📞 Phone: {phone_num}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        col_otp, col_btn = st.columns([3, 1])
-                        
-                        with col_otp:
-                            otp_input = st.text_input(
-                                "OTP কোড (4 digits)",
-                                placeholder="Enter OTP",
-                                key=f"otp_input_{app}",
-                                label_visibility="collapsed"
-                            )
-                        
-                        with col_btn:
-                            verify_clicked = st.button(
-                                "✅ Verify",
-                                key=f"verify_{app}",
-                                use_container_width=True,
-                                type="primary"
-                            )
-                        
-                        resend_clicked = st.button(
-                            "🔄 Resend OTP",
-                            key=f"resend_{app}",
-                            use_container_width=True
-                        )
-                        
-                        # Handle Verify
-                        if verify_clicked:
-                            if not otp_input or len(otp_input) != 4:
-                                st.warning("⚠️ 4 digit OTP দিন")
-                            elif not task_id:
-                                st.error("❌ Task ID নেই")
-                            else:
-                                with st.spinner(f"⏳ {app} verify হচ্ছে..."):
-                                    res = verify_otp(task_id, otp_input)
-                                    
-                                    if res.get('status') == 'success':
-                                        data = res.get('data', {})
-                                        st.session_state.app_tasks[app] = {
-                                            'task_id': task_id,
-                                            'phone': phone_num,
-                                            'status': 'success',
-                                            'password': data.get('password', 'N/A'),
-                                            'balance': data.get('account_balance', 0),
-                                            'message': ''
-                                        }
-                                        st.success(f"✅ {app} - Registration Successful!")
-                                        st.rerun()
-                                    else:
-                                        st.session_state.app_tasks[app]['status'] = 'failed'
-                                        st.session_state.app_tasks[app]['message'] = res.get('message', 'Wrong OTP')
-                                        st.error(f"❌ {app} - OTP Failed! 5 মিনিট অপেক্ষা করুন।")
-                                        st.rerun()
-                        
-                        # Handle Resend OTP
-                        if resend_clicked:
-                            if task_id:
-                                # Cancel old task first
-                                cancel_task(task_id)
-                            
-                            with st.spinner(f"⏳ {app} - নতুন OTP পাঠানো হচ্ছে..."):
-                                res = send_otp(app, phone_num)
-                                
-                                if res.get('status') == 'success':
-                                    st.session_state.app_tasks[app] = {
-                                        'task_id': res.get('task_id'),
-                                        'phone': phone_num,
-                                        'status': 'pending',
-                                        'otp_sent_at': datetime.now().isoformat(),
-                                        'message': ''
-                                    }
-                                    st.success(f"✅ {app} - নতুন OTP পাঠানো হয়েছে!")
-                                    st.rerun()
-                                else:
-                                    st.error(f"❌ {app} - {res.get('message', 'Failed')}")
-                        
-                        st.markdown("---")
+    # ===== SHOW SENDING PROGRESS =====
+    if st.session_state.sending_in_progress:
+        st.markdown(f"""
+        <div class="status-banner info">
+            📦 {st.session_state.current_sending_app}...
+        </div>
+        <div class="progress-container">
+            <div class="progress-bar" style="width: {st.session_state.sending_progress * 100}%"></div>
+        </div>
+        <div style="text-align: center; color: #94a3b8; margin-top: 0.5rem;">Sending...</div>
+        """, unsafe_allow_html=True)
+        st.rerun()
     
-    # ==================== HISTORY ====================
-    elif page == " History":
-        st.title("📜 Registration History")
-        st.markdown("---")
+    # ===== SHOW STATUS BANNERS =====
+    if st.session_state.notifications:
+        for notif in st.session_state.notifications[-5:]:
+            if notif.startswith("✅"):
+                st.markdown(f'<div class="status-banner success">{notif}</div>', unsafe_allow_html=True)
+            elif notif.startswith("❌"):
+                st.markdown(f'<div class="status-banner error">{notif}</div>', unsafe_allow_html=True)
+    
+    # ===== DONE/PENDING COUNTER =====
+    if st.session_state.app_tasks:
+        done = sum(1 for t in st.session_state.app_tasks.values() if t['status'] == 'done')
+        pending = sum(1 for t in st.session_state.app_tasks.values() if t['status'] == 'pending')
         
-        limit = st.slider("কতগুলো দেখবেন?", 1, 50, 10)
+        st.markdown(f"""
+        <div class="done-pending">
+            <span class="done">✅ Done: {done}</span>
+            <span class="pending"> Pending: {pending}</span>
+        </div>
+        """, unsafe_allow_html=True)
         
-        if st.button("🔄 Load History", type="primary", use_container_width=True):
-            res = get_registrations(limit=limit)
-            if res.get('status') == 'success':
-                data = res.get('data', [])
-                if data:
-                    st.dataframe(data, use_container_width=True)
+        # ===== QUICK SUBMIT =====
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="card-title">⚡ Quick Submit</div>', unsafe_allow_html=True)
+        
+        quick_otp = st.text_input(
+            "Quick OTP",
+            placeholder="1234 5678 9012",
+            label_visibility="collapsed",
+            key="quick_otp_input"
+        )
+        
+        col_qs1, col_qs2 = st.columns([3, 1])
+        with col_qs2:
+            if st.button("Submit", type="primary", use_container_width=True, key="quick_submit_btn"):
+                if quick_otp and len(quick_otp.replace(' ', '').replace('-', '')) == 4:
+                    clean_otp = quick_otp.replace(' ', '').replace('-', '')
+                    # Find first pending app
+                    submitted = False
+                    for app, task_info in st.session_state.app_tasks.items():
+                        if task_info['status'] == 'pending' and task_info.get('task_id'):
+                            res = verify_otp(task_info['task_id'], clean_otp)
+                            if res.get('status') == 'success':
+                                data = res.get('data', {})
+                                st.session_state.app_tasks[app] = {
+                                    'task_id': task_info['task_id'],
+                                    'phone': task_info['phone'],
+                                    'status': 'done',
+                                    'otp': clean_otp,
+                                    'password': data.get('password', 'N/A'),
+                                    'balance': data.get('account_balance', 0),
+                                    'message': ''
+                                }
+                                short = app.replace('_game', '').replace('Yono_vip', 'Yono')
+                                st.session_state.success_counts[short] = st.session_state.success_counts.get(short, 0) + 1
+                                st.session_state.notifications.append(f"✅ {app} ✓ {clean_otp}")
+                                submitted = True
+                                st.rerun()
+                            else:
+                                st.session_state.notifications.append(f" {app}: {res.get('message', 'Failed')}")
+                                submitted = True
+                                st.rerun()
+                    if not submitted:
+                        st.warning("No pending apps to verify")
                 else:
-                    st.info("কোনো registration নেই")
+                    st.warning("Enter 4-digit OTP")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # ===== INDIVIDUAL APP CARDS =====
+        for app, task_info in st.session_state.app_tasks.items():
+            status = task_info['status']
+            
+            if status == 'done':
+                st.markdown(f"""
+                <div class="app-card success-card">
+                    <div class="app-card-header">
+                        <span class="app-card-name">{app}</span>
+                        <span class="app-card-status done">✅ Done</span>
+                    </div>
+                    <div class="app-card-otp filled">{task_info.get('otp', '')} ✓</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            elif status == 'failed':
+                st.markdown(f"""
+                <div class="app-card" style="border-color: #dc2626;">
+                    <div class="app-card-header">
+                        <span class="app-card-name" style="color: #f87171;">{app}</span>
+                        <span class="app-card-status" style="background: #450a0a; color: #fca5a5; border-color: #dc2626;"> Failed</span>
+                    </div>
+                    <div style="color: #fca5a5; font-size: 0.85rem;">{task_info.get('message', 'Unknown error')}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
             else:
-                st.error(res.get('message'))
+                # Pending
+                otp_display = "— — — —" if not task_info.get('otp') else task_info['otp']
+                otp_class = "filled" if task_info.get('otp') else ""
+                
+                st.markdown(f"""
+                <div class="app-card">
+                    <div class="app-card-header">
+                        <span class="app-card-name">{app}</span>
+                        <span class="app-card-status pending">⏳ Pending</span>
+                    </div>
+                    <div class="app-card-otp {otp_class}">{otp_display}</div>
+                    <div class="app-card-buttons">
+                """, unsafe_allow_html=True)
+                
+                col_v, col_r = st.columns(2)
+                with col_v:
+                    if st.button("✓ Verify", key=f"verify_{app}", use_container_width=True):
+                        otp_val = st.session_state.get(f"otp_verify_{app}", "")
+                        if otp_val and len(otp_val.replace(' ', '').replace('-', '')) == 4 and task_info.get('task_id'):
+                            clean_otp = otp_val.replace(' ', '').replace('-', '')
+                            res = verify_otp(task_info['task_id'], clean_otp)
+                            if res.get('status') == 'success':
+                                data = res.get('data', {})
+                                st.session_state.app_tasks[app] = {
+                                    'task_id': task_info['task_id'],
+                                    'phone': task_info['phone'],
+                                    'status': 'done',
+                                    'otp': clean_otp,
+                                    'password': data.get('password', 'N/A'),
+                                    'balance': data.get('account_balance', 0),
+                                    'message': ''
+                                }
+                                short = app.replace('_game', '').replace('Yono_vip', 'Yono')
+                                st.session_state.success_counts[short] = st.session_state.success_counts.get(short, 0) + 1
+                                st.session_state.notifications.append(f"✅ {app} ✓ {clean_otp}")
+                                st.rerun()
+                            else:
+                                st.session_state.app_tasks[app]['status'] = 'failed'
+                                st.session_state.app_tasks[app]['message'] = res.get('message', 'Invalid OTP')
+                                st.session_state.notifications.append(f"❌ {app}: {res.get('message', 'Failed')}")
+                                st.rerun()
+                        else:
+                            st.warning("Enter 4-digit OTP in the field below first")
+                
+                with col_r:
+                    if st.button("🔄 Resend", key=f"resend_{app}", use_container_width=True):
+                        if task_info.get('task_id'):
+                            cancel_task(task_info['task_id'])
+                        res = send_otp(app, task_info['phone'])
+                        if res.get('status') == 'success':
+                            st.session_state.app_tasks[app] = {
+                                'task_id': res.get('task_id'),
+                                'phone': task_info['phone'],
+                                'status': 'pending',
+                                'otp': '',
+                                'message': ''
+                            }
+                            st.session_state.notifications.append(f"✅ {app} OTP resent!")
+                            st.rerun()
+                        else:
+                            st.session_state.notifications.append(f"❌ {app}: {res.get('message', 'Failed')}")
+                            st.rerun()
+                
+                # OTP input field for verify
+                st.text_input("OTP", key=f"otp_verify_{app}", label_visibility="collapsed", placeholder="Enter 4-digit OTP")
+                
+                st.markdown('</div></div>', unsafe_allow_html=True)
+    
+    # ===== SIDEBAR =====
+    with st.sidebar:
+        st.title(f" {st.session_state.username}")
+        st.markdown("---")
+        if st.button("Logout", use_container_width=True, type="secondary"):
+            logout()
+            st.rerun()
