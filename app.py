@@ -5,7 +5,7 @@ from datetime import datetime
 
 # ==================== CONFIGURATION ====================
 API_BASE_URL = "https://games.accbazaar.shop"
-API_KEY = "YOUR_API_KEY_HERE"  # ⚠️ আপনার আসল API Key দিন
+API_KEY = "panthers_ySfegn1vdco_lf9chq_-KbG7YAe0YyZMlAadcQ"  # ⚠️ আপনার আসল API Key দিন
 
 # ==================== API FUNCTIONS ====================
 def make_request(endpoint, method='GET', data=None, params=None):
