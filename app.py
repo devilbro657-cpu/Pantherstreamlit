@@ -6,7 +6,7 @@ import json
 
 # ==================== CONFIGURATION ====================
 API_BASE_URL = "https://games.accbazaar.shop"
-API_KEY = "আপনার-API-KEY-এখানে-লিখুন"  # ⚠️ আপনার API Key দিন
+API_KEY = "panthers_ySfegn1vdco_lf9chq_-KbG7YAe0YyZMlAadcQ"  # ⚠️ আপনার API Key দিন
 FLASK_SECRET_KEY = "your-secret-key"
 
 # ==================== DATABASE FUNCTIONS ====================
