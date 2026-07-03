@@ -4,7 +4,7 @@ from datetime import datetime
 
 # ==================== CONFIGURATION ====================
 API_BASE_URL = "https://games.accbazaar.shop"
-API_KEY = "আপনার-API-KEY-এখানে-লিখুন"  # ⚠️ আপনার API Key দিন
+API_KEY = "আপনার-API-KEY-এখানে-লিখুন"
 
 # Hardcoded Apps
 HARDCODED_APPS = [
@@ -59,57 +59,33 @@ if 'phone_number' not in st.session_state:
 
 # ==================== AUTHENTICATION ====================
 def login(username, password):
-    """Simple login - Replace with your actual auth"""
     if username == "admin" and password == "admin123":
         st.session_state.logged_in = True
         st.session_state.username = username
-        st.session_state.role = "admin"
         return True
     elif username and password:
         st.session_state.logged_in = True
         st.session_state.username = username
-        st.session_state.role = "user"
         return True
     return False
 
 def logout():
     st.session_state.logged_in = False
     st.session_state.username = ''
-    st.session_state.role = ""
     st.session_state.task_ids = {}
 
 # ==================== LOGIN PAGE ====================
 if not st.session_state.logged_in:
-    st.set_page_config(page_title="Login - Panther Tool", page_icon="🔐", layout="centered")
-    
-    # Custom CSS
-    st.markdown("""
-    <style>
-    .login-box {
-        padding: 2rem;
-        border-radius: 1rem;
-        background-color: #1e1e1e;
-        margin: 2rem auto;
-        max-width: 400px;
-    }
-    .stButton>button {
-        width: 100%;
-        border-radius: 0.5rem;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    st.set_page_config(page_title="Login", page_icon="🔐", layout="centered")
     
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.markdown('<div class="login-box">', unsafe_allow_html=True)
         st.title("🔐 Panther Tool")
         st.markdown("---")
         
-        username = st.text_input("Username", placeholder="Enter username", label_visibility="collapsed")
-        password = st.text_input("Password", type="password", placeholder="Enter password", label_visibility="collapsed")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
+        username = st.text_input("Username", placeholder="Enter username")
+        password = st.text_input("Password", type="password", placeholder="Enter password")
         
         col_a, col_b = st.columns(2)
         
@@ -117,7 +93,6 @@ if not st.session_state.logged_in:
             if st.button("Login", type="primary", use_container_width=True):
                 if login(username, password):
                     st.success("✅ Login successful!")
-                    st.balloons()
                     st.rerun()
                 else:
                     st.error("❌ Invalid credentials")
@@ -125,131 +100,37 @@ if not st.session_state.logged_in:
         with col_b:
             if st.button("Clear", use_container_width=True):
                 st.rerun()
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown("---")
-    st.markdown("<center>Made with ❤️ using Panther API</center>", unsafe_allow_html=True)
 
 else:
-    # ==================== MAIN APP AFTER LOGIN ====================
+    # ==================== MAIN APP ====================
     st.set_page_config(page_title="Panther Tool", page_icon="🐆", layout="wide")
-    
-    # Custom CSS
-    st.markdown("""
-    <style>
-    .success-box {
-        padding: 1rem;
-        border-radius: 0.5rem;
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        color: #155724;
-        margin-bottom: 0.5rem;
-    }
-    .error-box {
-        padding: 1rem;
-        border-radius: 0.5rem;
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
-        color: #721c24;
-        margin-bottom: 0.5rem;
-    }
-    .stButton>button {
-        border-radius: 0.5rem;
-    }
-    </style>
-    """, unsafe_allow_html=True)
     
     # Sidebar
     with st.sidebar:
         st.title(f"👤 {st.session_state.username}")
         st.markdown("---")
         
-        menu = st.radio(
-            "📋 Menu",
-            ["🏠 Dashboard", "📝 Registration Tool", "💰 Wallet", "📜 History"],
+        page = st.radio(
+            "Menu",
+            ["📝 Registration Tool", "📜 History"],
             label_visibility="collapsed"
         )
         
         st.markdown("---")
         
-        if st.button("Logout", use_container_width=True, type="secondary"):
+        if st.button("Logout", use_container_width=True):
             logout()
             st.rerun()
-        
-        st.caption("🐆 Panther Tool v1.0")
-    
-    # ==================== DASHBOARD ====================
-    if menu == "🏠 Dashboard":
-        st.title("🏠 Dashboard")
-        st.markdown("---")
-        
-        # Fetch wallet balance
-        wallet_res = get_wallet_balance()
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if wallet_res.get('status') == 'success':
-                st.metric("💰 Wallet Balance", f"Rs. {wallet_res.get('balance', 0)}")
-            else:
-                st.metric("💰 Wallet Balance", "N/A")
-        
-        with col2:
-            st.metric("📱 Active Tasks", len(st.session_state.task_ids))
-        
-        with col3:
-            st.metric("🎮 Available Apps", len(st.session_state.available_apps))
-        
-        st.markdown("---")
-        
-        # Quick Actions
-        st.subheader("⚡ Quick Actions")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("📝 New Registration", use_container_width=True, type="primary"):
-                st.session_state.menu = "📝 Registration Tool"
-                st.rerun()
-        
-        with col2:
-            if st.button("💰 Check Balance", use_container_width=True):
-                st.session_state.menu = "💰 Wallet"
-                st.rerun()
-        
-        with col3:
-            if st.button("📜 View History", use_container_width=True):
-                st.session_state.menu = "📜 History"
-                st.rerun()
-        
-        st.markdown("---")
-        
-        # Recent Activity
-        st.subheader("📊 Recent Registrations")
-        
-        if st.button("🔄 Load Recent", use_container_width=True):
-            res = get_registrations(limit=5)
-            if res.get('status') == 'success':
-                data = res.get('data', [])
-                if data:
-                    st.dataframe(data, use_container_width=True)
-                else:
-                    st.info("No recent registrations")
-            else:
-                st.error(res.get('message'))
     
     # ==================== REGISTRATION TOOL ====================
-    elif menu == "📝 Registration Tool":
+    if page == "📝 Registration Tool":
         st.title("📝 Registration Tool")
-        st.markdown("একাধিক অ্যাপে একসাথে রেজিস্ট্রেশন করুন (সর্বোচ্চ ৫টি)")
         st.markdown("---")
         
         # Step 1: Select Apps
         st.subheader("১. অ্যাপ সিলেক্ট করুন")
         
-        # Refresh Apps button
-        if st.button("🔄 Refresh Apps List"):
+        if st.button("🔄 Refresh Apps"):
             res = get_services_list()
             if res.get('status') == 'success':
                 st.session_state.available_apps = [s['app_name'] for s in res.get('services', [])]
@@ -259,12 +140,8 @@ else:
         selected_apps = st.multiselect(
             "অ্যাপ সিলেক্ট করুন (সর্বোচ্চ ৫টি)",
             st.session_state.available_apps,
-            max_selections=5,
-            help="একাধিক অ্যাপ সিলেক্ট করতে পারেন"
+            max_selections=5
         )
-        
-        if selected_apps:
-            st.info(f"✅ {len(selected_apps)} app(s) selected: {', '.join(selected_apps)}")
         
         st.markdown("---")
         
@@ -274,11 +151,7 @@ else:
         col1, col2 = st.columns(2)
         
         with col1:
-            phone = st.text_input(
-                "📱 ফোন নাম্বার",
-                value=st.session_state.phone_number,
-                placeholder="9876543210"
-            )
+            phone = st.text_input("📱 ফোন নাম্বার", value=st.session_state.phone_number, placeholder="9876543210")
             st.session_state.phone_number = phone
         
         with col2:
@@ -300,9 +173,8 @@ else:
                 st.error("❌ সঠিক ফোন নাম্বার দিন")
             else:
                 st.session_state.task_ids = {}
-                progress_bar = st.progress(0)
                 
-                for i, app in enumerate(selected_apps):
+                for app in selected_apps:
                     with st.spinner(f"⏳ {app}..."):
                         res = send_otp(app, phone)
                         
@@ -311,8 +183,6 @@ else:
                             st.success(f"✅ {app}: OTP Sent!")
                         else:
                             st.error(f"❌ {app}: {res.get('message', 'Failed')}")
-                        
-                        progress_bar.progress((i + 1) / len(selected_apps))
                 
                 if st.session_state.task_ids:
                     st.balloons()
@@ -400,21 +270,8 @@ else:
                 if success_regs:
                     st.balloons()
     
-    # ==================== WALLET ====================
-    elif menu == "💰 Wallet":
-        st.title("💰 Wallet")
-        st.markdown("---")
-        
-        if st.button("🔄 Refresh Balance", type="primary", use_container_width=True):
-            res = get_wallet_balance()
-            if res.get('status') == 'success':
-                st.metric("Available Balance", f"Rs. {res.get('balance', 0)}")
-                st.success(f"👤 Username: {res.get('username', 'N/A')}")
-            else:
-                st.error(res.get('message'))
-    
     # ==================== HISTORY ====================
-    elif menu == "📜 History":
+    elif page == "📜 History":
         st.title("📜 Registration History")
         st.markdown("---")
         
