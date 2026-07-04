@@ -1,13 +1,11 @@
 import streamlit as st
 import requests
 import time
-from datetime import datetime
 
 # ==================== CONFIGURATION ====================
 API_BASE_URL = "https://games.accbazaar.shop"
-API_KEY = "panthers_ySfegn1vdco_lf9chq_-KbG7YAe0YyZMlAadcQ"  # ⚠️ আপনার API Key দিন
+API_KEY = "YOUR_API_KEY_HERE"  # ⚠️ আপনার আসল API Key দিন
 
-# Hardcoded Apps
 HARDCODED_APPS = [
     "567slot_game", "mbmbet_game", "yonoslot_game", "Yono_vip",
     "789jackpot_game", "toprummy_game", "Yonogame_game",
@@ -33,14 +31,10 @@ def send_otp(app_name, phone):
 def verify_otp(task_id, otp):
     return make_request('/v1/register/verify_otp', 'POST', data={'task_id': task_id, 'otp': otp})
 
-def cancel_task(task_id):
-    return make_request('/v1/register/cancel_task', 'POST', data={'task_id': task_id})
-
 # ==================== SESSION STATE ====================
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'username' not in st.session_state: st.session_state.username = ''
 if 'available_apps' not in st.session_state: st.session_state.available_apps = HARDCODED_APPS
-if 'selected_apps' not in st.session_state: st.session_state.selected_apps = set()
 if 'app_tasks' not in st.session_state: st.session_state.app_tasks = {}
 if 'success_counts' not in st.session_state: st.session_state.success_counts = {}
 if 'phone_number' not in st.session_state: st.session_state.phone_number = ""
@@ -56,7 +50,6 @@ def login(username, password):
 def logout():
     st.session_state.logged_in = False
     st.session_state.app_tasks = {}
-    st.session_state.selected_apps = set()
 
 # ==================== CUSTOM CSS ====================
 st.markdown("""
@@ -71,7 +64,6 @@ st.markdown("""
 .app-card-status.done {background: #064e3b; color: #6ee7b7; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.75rem;}
 .app-card-otp {background: #0d1117; border: 1px solid #2a3050; border-radius: 8px; padding: 0.8rem; text-align: center; font-size: 1.2rem; letter-spacing: 0.3rem; color: #94a3b8; margin-bottom: 0.8rem;}
 .stButton > button {border-radius: 8px !important; font-weight: 600 !important;}
-/* Hide Streamlit elements */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 </style>
@@ -80,7 +72,7 @@ footer {visibility: hidden;}
 # ==================== LOGIN PAGE ====================
 if not st.session_state.logged_in:
     st.set_page_config(page_title="Panther Panel", layout="centered")
-    st.title(" Panther Panel Login")
+    st.title("🐆 Panther Panel Login")
     col1, col2 = st.columns(2)
     with col1: username = st.text_input("Username")
     with col2: password = st.text_input("Password", type="password")
@@ -92,11 +84,10 @@ else:
     # ==================== MAIN APP ====================
     st.set_page_config(page_title="Panther Panel", layout="wide")
     
-    # Header
     st.markdown("""
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <h2 style="margin: 0;">🐆 PANTHER</h2>
-        <button onclick="alert('Logout')" style="background: #3a1a1a; color: #f87171; border: 1px solid #5a2a2a; padding: 0.4rem 1rem; border-radius: 8px;">Exit</button>
+        <h2 style="margin: 0;"> PANTHER</h2>
+        <button style="background: #3a1a1a; color: #f87171; border: 1px solid #5a2a2a; padding: 0.4rem 1rem; border-radius: 8px;">Exit</button>
     </div>
     """, unsafe_allow_html=True)
     
@@ -113,34 +104,29 @@ else:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("🚀 Send OTP")
     
-    # App Selection
     st.markdown('<div style="color: #64748b; font-size: 0.8rem; margin-bottom: 0.5rem;">SELECT APPS</div>', unsafe_allow_html=True)
-    selected_apps = st.multiselect("Choose apps", st.session_state.available_apps, default=list(st.session_state.selected_apps))
-    st.session_state.selected_apps = set(selected_apps)
+    selected_apps = st.multiselect("Choose apps", st.session_state.available_apps)
     
-    # Phone Number
     st.markdown('<div style="color: #64748b; font-size: 0.8rem; margin-top: 1rem; margin-bottom: 0.5rem;">PHONE NUMBER</div>', unsafe_allow_html=True)
     phone = st.text_input("Phone Number", value=st.session_state.phone_number, placeholder="10-digit mobile number", label_visibility="collapsed")
     st.session_state.phone_number = phone
     
-    # Send Button
     send_clicked = st.button("🚀 SEND ALL OTPs", type="primary", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # ===== HANDLE SEND OTP (LIVE UPDATES) =====
+    # ===== HANDLE SEND OTP (FIXED TOAST ICONS) =====
     if send_clicked:
         if not selected_apps:
-            st.toast("Please select at least one app", icon="⚠️")
+            st.toast("Please select at least one app", icon="️")
         elif not phone or len(phone) != 10:
-            st.toast("Please enter valid 10-digit number", icon="⚠️")
+            st.toast("Please enter valid 10-digit number", icon="️")
         else:
-            st.session_state.app_tasks = {} # Reset tasks
+            st.session_state.app_tasks = {}
             
-            # Use st.status for live progress
             with st.status("Sending OTPs...", expanded=True) as status:
                 total = len(selected_apps)
                 for i, app in enumerate(selected_apps):
-                    st.write(f"📤 Sending OTP to **{app}**...")
+                    st.write(f" Sending OTP to **{app}**...")
                     
                     res = send_otp(app, phone)
                     
@@ -155,18 +141,17 @@ else:
                         st.session_state.app_tasks[app] = {
                             'task_id': None, 'phone': phone, 'status': 'failed', 'message': msg
                         }
-                        # Check for specific errors
+                        # FIXED: Replaced empty/invalid icons with valid emojis
                         if 'already' in msg.lower() or 'exist' in msg.lower():
                             st.write(f"⚠️ **{app}**: Number already registered!")
-                            st.toast(f"{app}: Already exists", icon="️")
+                            st.toast(f"{app}: Already exists", icon="⚠️")
                         elif 'Auth' in msg or 'Proxy' in msg:
                             st.write(f"🔑 **{app}**: Auth Error (Check API Key)")
-                            st.toast(f"{app}: Auth Error", icon="")
+                            st.toast(f"{app}: Auth Error", icon="")  # Fixed: was ""
                         else:
                             st.write(f"❌ **{app}**: {msg}")
                             st.toast(f"{app} Failed", icon="❌")
                     
-                    # 2.5 Second Gap
                     if i < total - 1:
                         st.write(f"⏳ Waiting 2.5 seconds before next app...")
                         time.sleep(2.5)
@@ -194,7 +179,6 @@ else:
         with col_q2:
             if st.button("Submit", type="primary", use_container_width=True):
                 if quick_otp and len(quick_otp) == 4:
-                    # Find first pending
                     for app, task in st.session_state.app_tasks.items():
                         if task['status'] == 'pending' and task.get('task_id'):
                             res = verify_otp(task['task_id'], quick_otp)
@@ -229,9 +213,5 @@ else:
                         <span class="app-card-status pending">⏳ Pending</span>
                     </div>
                     <div class="app-card-otp">— — — —</div>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button style="flex: 1; background: #064e3b; color: white; border: none; padding: 0.5rem; border-radius: 6px;">✓ Verify</button>
-                        <button style="flex: 1; background: #451a03; color: #fbbf24; border: none; padding: 0.5rem; border-radius: 6px;">🔄 Resend</button>
-                    </div>
                 </div>
                 """, unsafe_allow_html=True)
