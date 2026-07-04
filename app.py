@@ -1,660 +1,488 @@
-
 import streamlit as st
 import requests
-import time
+import json
+import os
 from datetime import datetime
+import pandas as pd
 
 # ==================== CONFIGURATION ====================
 API_BASE_URL = "https://games.accbazaar.shop"
-API_KEY = "panthers_ySfegn1vdco_lf9chq_-KbG7YAe0YyZMlAadcQ"  # ⚠️ আপনার আসল API Key দিন
+API_KEY = "panthers_ySfegn1vdco_lf9chq_-KbG7YAe0YyZMlAadcQ"  # ⚠️ আপনার API Key দিন
+SECRET_KEY = "your-secret-key-here"
+
+# Available Apps
+AVAILABLE_APPS = [
+    "567slot_game", "mbmbet_game", "yonoslot_game", "Yono_vip",
+    "789jackpot_game", "toprummy_game", "Yonogame_game",
+    "spincrush_game", "hirummy_game", "indslot_game",
+    "maha_game", "Yono777_game", "Yonogame_game",
+    "okrummy_game", "Bingo_game", "jaiho777_game"
+]
+
+# ==================== DATABASE (Simple JSON) ====================
+DB_FILE = "panther_data.json"
+
+def load_db():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, 'r') as f:
+            return json.load(f)
+    return {
+        'users': [
+            {'id': 1, 'username': 'admin', 'password': 'admin123', 'role': 'admin', 'created_at': str(datetime.now())},
+            {'id': 2, 'username': 'user1', 'password': 'user123', 'role': 'subuser', 'created_at': str(datetime.now())}
+        ],
+        'registrations': [],
+        'activity_logs': [],
+        'next_user_id': 3,
+        'next_reg_id': 1,
+        'next_log_id': 1
+    }
+
+def save_db(data):
+    with open(DB_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+def init_db():
+    data = load_db()
+    save_db(data)
+    return data
 
 # ==================== API FUNCTIONS ====================
-def make_request(endpoint, method='GET', data=None, params=None):
+def make_api_request(endpoint, method='GET', data=None, params=None):
     url = f"{API_BASE_URL}{endpoint}"
-    headers = {'X-API-Key': API_KEY, 'Content-Type': 'application/json; charset=utf-8'}
+    headers = {
+        'X-API-Key': API_KEY,
+        'Content-Type': 'application/json; charset=utf-8'
+    }
     try:
-        if method == 'POST':
-            r = requests.post(url, headers=headers, json=data, timeout=15)
+        if method == 'GET':
+            response = requests.get(url, headers=headers, params=params, timeout=15)
         else:
-            r = requests.get(url, headers=headers, params=params, timeout=15)
-        return r.json()
+            response = requests.post(url, headers=headers, json=data, params=params, timeout=15)
+        return response.json()
     except Exception as e:
         return {'status': 'error', 'message': str(e)}
 
-def send_otp(app_name, phone):
-    return make_request('/v1/register/send_otp', 'POST', data={'app_name': app_name, 'phone': phone})
+# ==================== AUTH FUNCTIONS ====================
+def authenticate_user(username, password, db_data):
+    for user in db_data['users']:
+        if user['username'] == username and user['password'] == password:
+            return user
+    return None
 
-def verify_otp(task_id, otp):
-    return make_request('/v1/register/verify_otp', 'POST', data={'task_id': task_id, 'otp': otp})
+def create_user(username, password, role, db_data):
+    for user in db_data['users']:
+        if user['username'] == username:
+            return False, "User already exists"
+    
+    new_user = {
+        'id': db_data['next_user_id'],
+        'username': username,
+        'password': password,
+        'role': role,
+        'created_at': str(datetime.now())
+    }
+    db_data['users'].append(new_user)
+    db_data['next_user_id'] += 1
+    save_db(db_data)
+    return True, "User created successfully"
 
-def cancel_task(task_id):
-    return make_request('/v1/register/cancel_task', 'POST', data={'task_id': task_id})
+def delete_user(user_id, db_data):
+    db_data['users'] = [u for u in db_data['users'] if u['id'] != user_id]
+    save_db(db_data)
+    return True
 
-def get_services_list():
-    return make_request('/v1/services/list')
+def log_activity(user_id, username, action, db_data, **kwargs):
+    log = {
+        'id': db_data['next_log_id'],
+        'user_id': user_id,
+        'username': username,
+        'action': action,
+        'timestamp': str(datetime.now()),
+        'details': kwargs
+    }
+    db_data['activity_logs'].append(log)
+    db_data['next_log_id'] += 1
+    save_db(db_data)
+
+def save_registration(user_id, username, app_name, phone, password, device_id, balance, otp, db_data):
+    reg = {
+        'id': db_data['next_reg_id'],
+        'user_id': user_id,
+        'username': username,
+        'app_name': app_name,
+        'phone': phone,
+        'password': password,
+        'device_id': device_id,
+        'balance': balance,
+        'otp': otp,
+        'created_at': str(datetime.now())
+    }
+    db_data['registrations'].append(reg)
+    db_data['next_reg_id'] += 1
+    save_db(db_data)
+    return reg
+
+def get_all_users_stats(db_data):
+    stats = []
+    for user in db_data['users']:
+        user_regs = [r for r in db_data['registrations'] if r.get('user_id') == user['id']]
+        today = datetime.now().strftime('%Y-%m-%d')
+        today_regs = [r for r in user_regs if r.get('created_at', '').startswith(today)]
+        
+        stats.append({
+            'user_id': user['id'],
+            'username': user['username'],
+            'role': user['role'],
+            'total_registrations': len(user_regs),
+            'today_registrations': len(today_regs)
+        })
+    return stats
 
 # ==================== SESSION STATE ====================
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
-if 'username' not in st.session_state:
-    st.session_state.username = ''
-if 'available_apps' not in st.session_state:
-    st.session_state.available_apps = [
-        "567slot_game", "mbmbet_game", "yonoslot_game", "Yono_vip",
-        "789jackpot_game", "toprummy_game", "Yonogame_game",
-        "spincrush_game", "hirummy_game", "indslot_game"
-    ]
-if 'selected_apps' not in st.session_state:
-    st.session_state.selected_apps = set()
-if 'app_tasks' not in st.session_state:
-    st.session_state.app_tasks = {}
-if 'success_counts' not in st.session_state:
-    st.session_state.success_counts = {}
-if 'notifications' not in st.session_state:
-    st.session_state.notifications = []
-if 'phone_number' not in st.session_state:
-    st.session_state.phone_number = ""
-if 'sending_in_progress' not in st.session_state:
-    st.session_state.sending_in_progress = False
-if 'current_sending_app' not in st.session_state:
-    st.session_state.current_sending_app = ""
-if 'sending_progress' not in st.session_state:
-    st.session_state.sending_progress = 0.0
-
-# ==================== AUTHENTICATION ====================
-def login(username, password):
-    if username == "admin" and password == "admin123":
-        st.session_state.logged_in = True
-        st.session_state.username = username
-        return True
-    elif username and password:
-        st.session_state.logged_in = True
-        st.session_state.username = username
-        return True
-    return False
-
-def logout():
-    st.session_state.logged_in = False
-    st.session_state.username = ''
-    st.session_state.app_tasks = {}
-    st.session_state.selected_apps = set()
-    st.session_state.notifications = []
-
-# ==================== CUSTOM CSS (Video UI Match) ====================
-CUSTOM_CSS = """
-<style>
-/* Hide Streamlit default elements */
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-.stApp {background: #0a0e1a !important; color: #ffffff !important;}
-
-/* Login */
-.login-container {
-    background: linear-gradient(135deg, #1a1f3a 0%, #0d1117 100%);
-    padding: 2rem;
-    border-radius: 16px;
-    border: 1px solid #2a3050;
-    max-width: 400px;
-    margin: 3rem auto;
-    text-align: center;
-}
-
-/* Header */
-.panther-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1rem 1.5rem;
-    background: linear-gradient(135deg, #1a1f3a 0%, #0d1117 100%);
-    border-radius: 12px;
-    margin-bottom: 1rem;
-    border: 1px solid #2a3050;
-}
-.panther-logo {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #ffffff;
-}
-.deep-test-btn {
-    background: #1a2a4a;
-    color: #60a5fa;
-    border: 1px solid #2a4a7a;
-    padding: 0.4rem 1rem;
-    border-radius: 8px;
-    font-size: 0.85rem;
-}
-.exit-btn {
-    background: #3a1a1a;
-    color: #f87171;
-    border: 1px solid #5a2a2a;
-    padding: 0.4rem 1rem;
-    border-radius: 8px;
-    font-size: 0.85rem;
-}
-
-/* Counter badges */
-.counter-bar {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    margin-bottom: 1rem;
-}
-.counter-badge {
-    background: #1a1f3a;
-    border: 1px solid #2a3050;
-    padding: 0.4rem 0.8rem;
-    border-radius: 20px;
-    font-size: 0.8rem;
-    color: #94a3b8;
-}
-.counter-badge span {color: #60a5fa; font-weight: bold;}
-
-/* Card */
-.card {
-    background: linear-gradient(135deg, #1a1f3a 0%, #0d1117 100%);
-    border: 1px solid #2a3050;
-    border-radius: 16px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-}
-.card-title {
-    font-size: 1.2rem;
-    font-weight: bold;
-    margin-bottom: 1rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-/* Label */
-.label-text {
-    font-size: 0.75rem;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.1rem;
-    margin-bottom: 0.5rem;
-    font-weight: 600;
-}
-
-/* Status banners */
-.status-banner {
-    padding: 0.8rem 1rem;
-    border-radius: 10px;
-    margin-bottom: 0.5rem;
-    font-size: 0.9rem;
-    font-weight: 500;
-}
-.status-banner.success {
-    background: #064e3b;
-    border: 1px solid #059669;
-    color: #6ee7b7;
-}
-.status-banner.error {
-    background: #450a0a;
-    border: 1px solid #dc2626;
-    color: #fca5a5;
-}
-.status-banner.info {
-    background: #1e3a5f;
-    border: 1px solid #3b82f6;
-    color: #93c5fd;
-}
-
-/* Progress */
-.progress-container {
-    background: #1a1f3a;
-    border-radius: 8px;
-    overflow: hidden;
-    height: 8px;
-    margin: 0.5rem 0;
-}
-.progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #3b82f6, #60a5fa);
-    transition: width 0.3s;
-    border-radius: 8px;
-}
-
-/* Done/Pending counter */
-.done-pending {
-    display: flex;
-    justify-content: center;
-    gap: 2rem;
-    padding: 0.8rem;
-    background: #1a1f3a;
-    border-radius: 10px;
-    margin-bottom: 1rem;
-    border: 1px solid #2a3050;
-}
-.done-pending .done {color: #6ee7b7; font-weight: bold;}
-.done-pending .pending {color: #fbbf24; font-weight: bold;}
-
-/* App card */
-.app-card {
-    background: #1a1f3a;
-    border: 1px solid #2a3050;
-    border-radius: 12px;
-    padding: 1rem;
-    margin-bottom: 0.8rem;
-}
-.app-card.success-card {
-    border-color: #059669;
-    background: #064e3b;
-}
-.app-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.8rem;
-}
-.app-card-name {color: #60a5fa; font-weight: bold; font-size: 0.95rem;}
-.app-card-status {
-    padding: 0.2rem 0.6rem;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: bold;
-}
-.app-card-status.pending {
-    background: #451a03;
-    color: #fbbf24;
-    border: 1px solid #92400e;
-}
-.app-card-status.done {
-    background: #064e3b;
-    color: #6ee7b7;
-    border: 1px solid #059669;
-}
-.app-card-otp {
-    background: #0d1117;
-    border: 1px solid #2a3050;
-    border-radius: 8px;
-    padding: 0.8rem;
-    text-align: center;
-    font-size: 1.2rem;
-    letter-spacing: 0.3rem;
-    color: #94a3b8;
-    margin-bottom: 0.8rem;
-}
-.app-card-otp.filled {color: #6ee7b7; letter-spacing: 0.2rem;}
-.app-card-buttons {display: flex; gap: 0.5rem;}
-
-/* Notification */
-.notification {
-    position: fixed;
-    top: 1rem;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1000;
-    padding: 0.8rem 1.5rem;
-    border-radius: 10px;
-    font-weight: bold;
-    animation: slideDown 0.3s ease;
-    min-width: 250px;
-    text-align: center;
-}
-.notification.success {
-    background: #064e3b;
-    border: 1px solid #059669;
-    color: #6ee7b7;
-}
-@keyframes slideDown {
-    from { transform: translateX(-50%) translateY(-100%); opacity: 0; }
-    to { transform: translateX(-50%) translateY(0); opacity: 1; }
-}
-
-/* Streamlit overrides */
-.stTextInput > div > div > input {
-    background: #0d1117 !important;
-    border: 1px solid #2a3050 !important;
-    color: #ffffff !important;
-    border-radius: 10px !important;
-    padding: 0.8rem 1rem !important;
-}
-.stButton > button {
-    border-radius: 10px !important;
-    font-weight: 600 !important;
-}
-</style>
-"""
+if 'user' not in st.session_state:
+    st.session_state.user = None
+if 'db_data' not in st.session_state:
+    st.session_state.db_data = init_db()
+if 'active_tasks' not in st.session_state:
+    st.session_state.active_tasks = {}
+if 'success_counter' not in st.session_state:
+    st.session_state.success_counter = {app: 0 for app in AVAILABLE_APPS}
 
 # ==================== LOGIN PAGE ====================
 if not st.session_state.logged_in:
-    st.set_page_config(page_title="Panther Panel", page_icon="🐆", layout="centered")
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    st.set_page_config(page_title="Panther Tool - Login", page_icon="🐆", layout="centered")
     
     st.markdown("""
-    <div class="login-container">
-        <div style="font-size: 3rem; margin-bottom: 0.5rem;">🐆</div>
-        <h1 style="margin: 0; color: #ffffff; font-size: 2rem;">PANTHER</h1>
-        <p style="color: #64748b; margin: 0.5rem 0 1.5rem 0;">Panel Login</p>
+    <style>
+    .login-box {
+        background: linear-gradient(135deg, #1a1f3a 0%, #0d1117 100%);
+        padding: 3rem;
+        border-radius: 20px;
+        border: 1px solid #2a3050;
+        max-width: 450px;
+        margin: 3rem auto;
+        text-align: center;
+    }
+    .stButton>button {
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="login-box">
+        <div style="font-size: 4rem; margin-bottom: 1rem;">🐆</div>
+        <h1 style="margin: 0; color: #ffffff; font-size: 2.5rem;">PANTHER</h1>
+        <p style="color: #64748b; margin: 0.5rem 0 2rem 0;">Tool with Admin Panel</p>
     </div>
     """, unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        username = st.text_input("Username", placeholder="Enter username", key="login_user")
+        username = st.text_input("Username", placeholder="Enter username")
     with col2:
-        password = st.text_input("Password", type="password", placeholder="Enter password", key="login_pass")
+        password = st.text_input("Password", type="password", placeholder="Enter password")
     
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("Login", type="primary", use_container_width=True):
-            if login(username, password):
-                st.success("Login successful!")
-                st.rerun()
+            if username and password:
+                user = authenticate_user(username, password, st.session_state.db_data)
+                if user:
+                    st.session_state.logged_in = True
+                    st.session_state.user = user
+                    log_activity(user['id'], user['username'], 'login', st.session_state.db_data, status='success')
+                    st.success("Login successful!")
+                    st.rerun()
+                else:
+                    st.error("Invalid username or password")
             else:
-                st.error("Invalid credentials")
+                st.warning("Please enter username and password")
+    
     with col_b:
         if st.button("Clear", use_container_width=True):
             st.rerun()
 
 else:
     # ==================== MAIN APP ====================
-    st.set_page_config(page_title="Panther Panel", page_icon="🐆", layout="wide")
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    user = st.session_state.user
+    db_data = st.session_state.db_data
     
-    # Show notifications (top banners like in video)
-    for notif in st.session_state.notifications[-3:]:
-        st.markdown(f'<div class="notification success">{notif}</div>', unsafe_allow_html=True)
-    
-    # ===== HEADER =====
-    st.markdown("""
-    <div class="panther-header">
-        <div class="panther-logo">
-            <span>🐆</span>
-            <span>PANTHER</span>
-        </div>
-        <div style="display: flex; gap: 0.5rem;">
-            <span class="deep-test-btn">👤 DEEP TEST</span>
-            <span class="exit-btn">Exit</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # ===== COUNTER BADGES =====
-    counter_html = '<div class="counter-bar">'
-    for app, count in st.session_state.success_counts.items():
-        counter_html += f'<div class="counter-badge">{app}: <span>{count}</span></div>'
-    if not st.session_state.success_counts:
-        for app in ['567slot', 'Yono', 'mbmbet', 'yonoslot']:
-            counter_html += f'<div class="counter-badge">{app}: <span>0</span></div>'
-    counter_html += '</div>'
-    st.markdown(counter_html, unsafe_allow_html=True)
-    
-    # ===== SEND OTP SECTION =====
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-title">🚀 Send OTP</div>', unsafe_allow_html=True)
-    
-    # App selection label
-    st.markdown('<div class="label-text">SELECT APPS</div>', unsafe_allow_html=True)
-    
-    # App toggle buttons
-    apps = st.session_state.available_apps
-    cols_per_row = 2
-    num_rows = (len(apps) + cols_per_row - 1) // cols_per_row
-    
-    for row in range(num_rows):
-        cols = st.columns(cols_per_row)
-        for col_idx in range(cols_per_row):
-            app_idx = row * cols_per_row + col_idx
-            if app_idx < len(apps):
-                app = apps[app_idx]
-                is_selected = app in st.session_state.selected_apps
-                with cols[col_idx]:
-                    btn_type = "primary" if is_selected else "secondary"
-                    if st.button(app, key=f"app_toggle_{app}", use_container_width=True, type=btn_type):
-                        if app in st.session_state.selected_apps:
-                            st.session_state.selected_apps.remove(app)
-                        else:
-                            st.session_state.selected_apps.add(app)
-                        st.rerun()
-    
-    # Phone number
-    st.markdown('<div class="label-text" style="margin-top: 1rem;">PHONE NUMBER</div>', unsafe_allow_html=True)
-    phone = st.text_input(
-        "Phone Number",
-        value=st.session_state.phone_number,
-        placeholder="10-digit mobile number",
-        label_visibility="collapsed",
-        key="phone_input"
-    )
-    st.session_state.phone_number = phone
-    
-    # Send button
-    send_clicked = st.button("🚀 SEND ALL OTPs", type="primary", use_container_width=True, key="send_all_btn")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # ===== HANDLE SEND OTP =====
-    if send_clicked:
-        if not st.session_state.selected_apps:
-            st.error("Please select at least one app")
-        elif not phone or len(phone) != 10 or not phone.isdigit():
-            st.error("Please enter a valid 10-digit phone number")
-        else:
-            st.session_state.app_tasks = {}
-            st.session_state.sending_in_progress = True
-            st.session_state.notifications = []
-            
-            total = len(st.session_state.selected_apps)
-            
-            for i, app in enumerate(list(st.session_state.selected_apps)):
-                st.session_state.current_sending_app = app
-                st.session_state.sending_progress = (i + 1) / total
-                
-                res = send_otp(app, phone)
-                
-                if res.get('status') == 'success':
-                    st.session_state.app_tasks[app] = {
-                        'task_id': res.get('task_id'),
-                        'phone': phone,
-                        'status': 'pending',
-                        'otp': '',
-                        'message': ''
-                    }
-                    st.session_state.notifications.append(f"✅ {app} sent!")
-                else:
-                    st.session_state.app_tasks[app] = {
-                        'task_id': None,
-                        'phone': phone,
-                        'status': 'failed',
-                        'otp': '',
-                        'message': res.get('message', 'Failed')
-                    }
-                    st.session_state.notifications.append(f"❌ {app}: {res.get('message', 'Failed')}")
-                
-                # 2.5 second gap between OTPs
-                if i < total - 1:
-                    time.sleep(2.5)
-            
-            st.session_state.sending_in_progress = False
-            st.session_state.current_sending_app = ""
-            st.rerun()
-    
-    # ===== SHOW SENDING PROGRESS =====
-    if st.session_state.sending_in_progress:
-        st.markdown(f"""
-        <div class="status-banner info">
-            📦 {st.session_state.current_sending_app}...
-        </div>
-        <div class="progress-container">
-            <div class="progress-bar" style="width: {st.session_state.sending_progress * 100}%"></div>
-        </div>
-        <div style="text-align: center; color: #94a3b8; margin-top: 0.5rem;">Sending...</div>
-        """, unsafe_allow_html=True)
-        st.rerun()
-    
-    # ===== SHOW STATUS BANNERS =====
-    if st.session_state.notifications:
-        for notif in st.session_state.notifications[-5:]:
-            if notif.startswith("✅"):
-                st.markdown(f'<div class="status-banner success">{notif}</div>', unsafe_allow_html=True)
-            elif notif.startswith("❌"):
-                st.markdown(f'<div class="status-banner error">{notif}</div>', unsafe_allow_html=True)
-    
-    # ===== DONE/PENDING COUNTER =====
-    if st.session_state.app_tasks:
-        done = sum(1 for t in st.session_state.app_tasks.values() if t['status'] == 'done')
-        pending = sum(1 for t in st.session_state.app_tasks.values() if t['status'] == 'pending')
-        
-        st.markdown(f"""
-        <div class="done-pending">
-            <span class="done">✅ Done: {done}</span>
-            <span class="pending"> Pending: {pending}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # ===== QUICK SUBMIT =====
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown('<div class="card-title">⚡ Quick Submit</div>', unsafe_allow_html=True)
-        
-        quick_otp = st.text_input(
-            "Quick OTP",
-            placeholder="1234 5678 9012",
-            label_visibility="collapsed",
-            key="quick_otp_input"
-        )
-        
-        col_qs1, col_qs2 = st.columns([3, 1])
-        with col_qs2:
-            if st.button("Submit", type="primary", use_container_width=True, key="quick_submit_btn"):
-                if quick_otp and len(quick_otp.replace(' ', '').replace('-', '')) == 4:
-                    clean_otp = quick_otp.replace(' ', '').replace('-', '')
-                    # Find first pending app
-                    submitted = False
-                    for app, task_info in st.session_state.app_tasks.items():
-                        if task_info['status'] == 'pending' and task_info.get('task_id'):
-                            res = verify_otp(task_info['task_id'], clean_otp)
-                            if res.get('status') == 'success':
-                                data = res.get('data', {})
-                                st.session_state.app_tasks[app] = {
-                                    'task_id': task_info['task_id'],
-                                    'phone': task_info['phone'],
-                                    'status': 'done',
-                                    'otp': clean_otp,
-                                    'password': data.get('password', 'N/A'),
-                                    'balance': data.get('account_balance', 0),
-                                    'message': ''
-                                }
-                                short = app.replace('_game', '').replace('Yono_vip', 'Yono')
-                                st.session_state.success_counts[short] = st.session_state.success_counts.get(short, 0) + 1
-                                st.session_state.notifications.append(f"✅ {app} ✓ {clean_otp}")
-                                submitted = True
-                                st.rerun()
-                            else:
-                                st.session_state.notifications.append(f" {app}: {res.get('message', 'Failed')}")
-                                submitted = True
-                                st.rerun()
-                    if not submitted:
-                        st.warning("No pending apps to verify")
-                else:
-                    st.warning("Enter 4-digit OTP")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # ===== INDIVIDUAL APP CARDS =====
-        for app, task_info in st.session_state.app_tasks.items():
-            status = task_info['status']
-            
-            if status == 'done':
-                st.markdown(f"""
-                <div class="app-card success-card">
-                    <div class="app-card-header">
-                        <span class="app-card-name">{app}</span>
-                        <span class="app-card-status done">✅ Done</span>
-                    </div>
-                    <div class="app-card-otp filled">{task_info.get('otp', '')} ✓</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            elif status == 'failed':
-                st.markdown(f"""
-                <div class="app-card" style="border-color: #dc2626;">
-                    <div class="app-card-header">
-                        <span class="app-card-name" style="color: #f87171;">{app}</span>
-                        <span class="app-card-status" style="background: #450a0a; color: #fca5a5; border-color: #dc2626;"> Failed</span>
-                    </div>
-                    <div style="color: #fca5a5; font-size: 0.85rem;">{task_info.get('message', 'Unknown error')}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            else:
-                # Pending
-                otp_display = "— — — —" if not task_info.get('otp') else task_info['otp']
-                otp_class = "filled" if task_info.get('otp') else ""
-                
-                st.markdown(f"""
-                <div class="app-card">
-                    <div class="app-card-header">
-                        <span class="app-card-name">{app}</span>
-                        <span class="app-card-status pending">⏳ Pending</span>
-                    </div>
-                    <div class="app-card-otp {otp_class}">{otp_display}</div>
-                    <div class="app-card-buttons">
-                """, unsafe_allow_html=True)
-                
-                col_v, col_r = st.columns(2)
-                with col_v:
-                    if st.button("✓ Verify", key=f"verify_{app}", use_container_width=True):
-                        otp_val = st.session_state.get(f"otp_verify_{app}", "")
-                        if otp_val and len(otp_val.replace(' ', '').replace('-', '')) == 4 and task_info.get('task_id'):
-                            clean_otp = otp_val.replace(' ', '').replace('-', '')
-                            res = verify_otp(task_info['task_id'], clean_otp)
-                            if res.get('status') == 'success':
-                                data = res.get('data', {})
-                                st.session_state.app_tasks[app] = {
-                                    'task_id': task_info['task_id'],
-                                    'phone': task_info['phone'],
-                                    'status': 'done',
-                                    'otp': clean_otp,
-                                    'password': data.get('password', 'N/A'),
-                                    'balance': data.get('account_balance', 0),
-                                    'message': ''
-                                }
-                                short = app.replace('_game', '').replace('Yono_vip', 'Yono')
-                                st.session_state.success_counts[short] = st.session_state.success_counts.get(short, 0) + 1
-                                st.session_state.notifications.append(f"✅ {app} ✓ {clean_otp}")
-                                st.rerun()
-                            else:
-                                st.session_state.app_tasks[app]['status'] = 'failed'
-                                st.session_state.app_tasks[app]['message'] = res.get('message', 'Invalid OTP')
-                                st.session_state.notifications.append(f"❌ {app}: {res.get('message', 'Failed')}")
-                                st.rerun()
-                        else:
-                            st.warning("Enter 4-digit OTP in the field below first")
-                
-                with col_r:
-                    if st.button("🔄 Resend", key=f"resend_{app}", use_container_width=True):
-                        if task_info.get('task_id'):
-                            cancel_task(task_info['task_id'])
-                        res = send_otp(app, task_info['phone'])
-                        if res.get('status') == 'success':
-                            st.session_state.app_tasks[app] = {
-                                'task_id': res.get('task_id'),
-                                'phone': task_info['phone'],
-                                'status': 'pending',
-                                'otp': '',
-                                'message': ''
-                            }
-                            st.session_state.notifications.append(f"✅ {app} OTP resent!")
-                            st.rerun()
-                        else:
-                            st.session_state.notifications.append(f"❌ {app}: {res.get('message', 'Failed')}")
-                            st.rerun()
-                
-                # OTP input field for verify
-                st.text_input("OTP", key=f"otp_verify_{app}", label_visibility="collapsed", placeholder="Enter 4-digit OTP")
-                
-                st.markdown('</div></div>', unsafe_allow_html=True)
-    
-    # ===== SIDEBAR =====
+    # Sidebar
     with st.sidebar:
-        st.title(f" {st.session_state.username}")
+        st.title(f"🐆 Panther Tool")
+        st.markdown("---")
+        st.write(f"👤 **User:** {user['username']}")
+        st.write(f"🔑 **Role:** {user['role'].upper()}")
+        st.markdown("---")
+        
+        if user['role'] == 'admin':
+            menu = st.radio(
+                "Navigation",
+                ["🏠 Dashboard", "👥 User Management", "📊 Admin Panel", "📝 Registration", "💰 Check Balance", "📜 History"],
+                index=0
+            )
+        else:
+            menu = st.radio(
+                "Navigation",
+                ["🏠 Home", "📝 Registration", "💰 Check Balance", "📊 My Registrations"],
+                index=0
+            )
+        
         st.markdown("---")
         if st.button("Logout", use_container_width=True, type="secondary"):
-            logout()
+            log_activity(user['id'], user['username'], 'logout', db_data)
+            st.session_state.logged_in = False
+            st.session_state.user = None
             st.rerun()
+    
+    # ==================== DASHBOARD (ADMIN) ====================
+    if menu == "🏠 Dashboard" and user['role'] == 'admin':
+        st.title("🏠 Admin Dashboard")
+        st.markdown("---")
+        
+        # Statistics
+        stats = get_all_users_stats(db_data)
+        total_users = len(stats)
+        total_regs = sum(s['total_registrations'] for s in stats)
+        today_regs = sum(s['today_registrations'] for s in stats)
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Users", total_users)
+        col2.metric("Total Registrations", total_regs)
+        col3.metric("Today's Registrations", today_regs)
+        
+        st.markdown("---")
+        
+        # Recent Registrations
+        st.subheader("Recent Registrations")
+        if db_data['registrations']:
+            recent_regs = db_data['registrations'][-10:]
+            df = pd.DataFrame(recent_regs)
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.info("No registrations yet")
+    
+    # ==================== USER MANAGEMENT (ADMIN) ====================
+    elif menu == "👥 User Management" and user['role'] == 'admin':
+        st.title("👥 User Management")
+        st.markdown("---")
+        
+        tab1, tab2 = st.tabs(["➕ Create User", "👁️ View Users"])
+        
+        with tab1:
+            st.subheader("Create New User")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                new_username = st.text_input("Username", key="new_username")
+                new_password = st.text_input("Password", type="password", key="new_password")
+            with col2:
+                new_role = st.selectbox("Role", ["subuser", "admin"], key="new_role")
+            
+            if st.button("Create User", type="primary"):
+                if new_username and new_password:
+                    success, message = create_user(new_username, new_password, new_role, db_data)
+                    if success:
+                        log_activity(user['id'], user['username'], 'create_user', db_data, details=f'Created user: {new_username}')
+                        st.success(message)
+                        st.rerun()
+                    else:
+                        st.error(message)
+                else:
+                    st.warning("Please fill all fields")
+        
+        with tab2:
+            st.subheader("All Users")
+            if db_data['users']:
+                users_df = pd.DataFrame(db_data['users'])
+                st.dataframe(users_df, use_container_width=True)
+                
+                st.markdown("---")
+                st.subheader("Delete User")
+                users_to_delete = [u for u in db_data['users'] if u['username'] != 'admin']
+                if users_to_delete:
+                    user_to_delete = st.selectbox(
+                        "Select User to Delete",
+                        [f"{u['username']} (ID: {u['id']})" for u in users_to_delete]
+                    )
+                    if st.button("Delete User", type="danger"):
+                        if user_to_delete:
+                            uid = int(user_to_delete.split("(ID: ")[1].replace(")", ""))
+                            delete_user(uid, db_data)
+                            log_activity(user['id'], user['username'], 'delete_user', db_data, details=f'Deleted user ID: {uid}')
+                            st.success("User deleted successfully")
+                            st.rerun()
+    
+    # ==================== ADMIN PANEL (ADMIN) ====================
+    elif menu == "📊 Admin Panel" and user['role'] == 'admin':
+        st.title("📊 Admin Panel")
+        st.markdown("---")
+        
+        # Statistics
+        stats = get_all_users_stats(db_data)
+        total_users = len(stats)
+        total_regs = sum(s['total_registrations'] for s in stats)
+        today_regs = sum(s['today_registrations'] for s in stats)
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Users", total_users)
+        col2.metric("Total Registrations", total_regs)
+        col3.metric("Today's Registrations", today_regs)
+        
+        st.markdown("---")
+        
+        # Activity Logs
+        st.subheader("Activity Logs")
+        if db_data['activity_logs']:
+            logs_df = pd.DataFrame(db_data['activity_logs'][-50:])
+            st.dataframe(logs_df, use_container_width=True)
+        else:
+            st.info("No activity logs yet")
+    
+    # ==================== REGISTRATION (ALL USERS) ====================
+    elif menu in ["📝 Registration", "📝 Registration"]:
+        st.title("📝 Account Registration")
+        st.markdown("---")
+        
+        # Available apps
+        selected_app = st.selectbox("Select App", AVAILABLE_APPS)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            phone = st.text_input("Phone Number", placeholder="+8801XXXXXXXXX")
+            password = st.text_input("Password", type="password")
+        with col2:
+            otp = st.text_input("OTP Code", placeholder="Enter OTP")
+            device_id = st.text_input("Device ID (Optional)", placeholder="Enter device ID")
+        
+        st.markdown("---")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📤 Send OTP", type="primary", use_container_width=True):
+                if phone and selected_app:
+                    with st.spinner("Sending OTP..."):
+                        result = make_api_request('/v1/account/send_otp', method='POST', data={
+                            'app_name': selected_app,
+                            'phone': phone
+                        })
+                        if result.get('status') == 'success':
+                            st.success("OTP sent successfully!")
+                            log_activity(user['id'], user['username'], 'send_otp', db_data,
+                                       app_name=selected_app, phone=phone, status='success')
+                        else:
+                            st.error(f"Error: {result.get('message', 'Unknown error')}")
+                            log_activity(user['id'], user['username'], 'send_otp', db_data,
+                                       app_name=selected_app, phone=phone, status='failed')
+                else:
+                    st.warning("Please enter phone number and select app")
+        
+        with col2:
+            if st.button("✅ Register", type="primary", use_container_width=True):
+                if phone and password and otp:
+                    with st.spinner("Registering..."):
+                        result = make_api_request('/v1/account/register', method='POST', data={
+                            'app_name': selected_app,
+                            'phone': phone,
+                            'password': password,
+                            'otp': otp,
+                            'device_id': device_id
+                        })
+                        
+                        if result.get('status') == 'success':
+                            st.success("Registration successful!")
+                            data = result.get('data', {})
+                            st.json(data)
+                            
+                            # Save to database
+                            save_registration(
+                                user['id'], user['username'],
+                                selected_app, phone, password, device_id,
+                                data.get('account_balance', 0),
+                                otp,
+                                db_data
+                            )
+                            
+                            log_activity(user['id'], user['username'], 'register', db_data,
+                                       app_name=selected_app, phone=phone, status='success')
+                            st.rerun()
+                        else:
+                            st.error(f"Error: {result.get('message', 'Unknown error')}")
+                            log_activity(user['id'], user['username'], 'register', db_data,
+                                       app_name=selected_app, phone=phone, status='failed')
+                else:
+                    st.warning("Please fill all required fields")
+    
+    # ==================== CHECK BALANCE ====================
+    elif menu == "💰 Check Balance":
+        st.title("💰 Check Account Balance")
+        st.markdown("---")
+        
+        selected_app = st.selectbox("Select App", AVAILABLE_APPS, key="balance_app")
+        phone = st.text_input("Phone Number", placeholder="+8801XXXXXXXXX", key="balance_phone")
+        
+        if st.button("🔍 Check Balance", type="primary"):
+            if phone and selected_app:
+                with st.spinner("Checking balance..."):
+                    result = make_api_request('/v1/account/balance', params={
+                        'app_name': selected_app,
+                        'phone': phone
+                    })
+                    if result.get('status') == 'success':
+                        st.metric("Account Balance", f"Rs. {result.get('data', {}).get('balance', 'N/A')}")
+                        st.success("Balance retrieved successfully")
+                    else:
+                        st.error(f"Error: {result.get('message', 'Unknown error')}")
+            else:
+                st.warning("Please enter phone number and select app")
+    
+    # ==================== HISTORY / MY REGISTRATIONS ====================
+    elif menu in ["📜 History", "📊 My Registrations"]:
+        st.title("📜 Registration History")
+        st.markdown("---")
+        
+        if user['role'] == 'admin':
+            # Admin sees all registrations
+            limit = st.slider("Number of records", 10, 200, 50)
+            regs = db_data['registrations'][-limit:]
+        else:
+            # Subuser sees only their registrations
+            st.write(f"Showing your registrations only")
+            regs = [r for r in db_data['registrations'] if r.get('user_id') == user['id']]
+        
+        if regs:
+            df = pd.DataFrame(regs)
+            st.dataframe(df, use_container_width=True)
+            
+            # Download option
+            csv = df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download as CSV",
+                data=csv,
+                file_name=f"registrations_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("No registrations found")
+    
+    # ==================== HOME (SUBUSER) ====================
+    elif menu == "🏠 Home":
+        st.title(" Welcome to Panther Tool")
+        st.markdown("### Features:")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Feature 1", "Quick Registration")
+            st.info("✅ OTP-based verification")
+        with col2:
+            st.metric("Feature 2", "Balance Check")
+            st.info("✅ Real-time balance")
+        with col3:
+            st.metric("Feature 3", "Activity Tracking")
+            st.info("✅ Complete logs")
