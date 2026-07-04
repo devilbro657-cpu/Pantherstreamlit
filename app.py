@@ -11,7 +11,7 @@ DB_PATH = "panther.db"
 
 # Default API Config
 DEFAULT_API_BASE_URL = "https://games.accbazaar.shop"
-DEFAULT_API_KEY = "panthers_ySfegn1vdco_lf9chq_-KbG7YAe0YyZMlAadcQ"
+DEFAULT_API_KEY = "panthers_V3vGXVJFfnia6o-FHwPoad4odaPbBbcAa8wIlw"
 
 AVAILABLE_APPS = [
     "567slot_game", "Yono_vip", "mbmbet_game", "yonoslot_game",
